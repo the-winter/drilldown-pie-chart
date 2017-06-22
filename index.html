@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.js"></script>
+  <script src="https://d3js.org/d3.v4.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+
+</head>
+
+<body>
+  <div class="container">
+    <div class="row">
+      <div class="col-sm-8 offset-sm-1">
+        <div class="page-header">
+          <h2>Electricity Usage Pie Chart with Drill Down Functionality</h2>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col-sm-8 offset-sm-1">
+        <div id="chart">
+        </div>
+        <div id="tooltip" class="hidden">
+          <p><b><span id="section">: </span></b> </p>
+          <p><span id="value"> </span> watts</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="text/javascript">
+    $(document).ready(function() {
+      Plot();
+    })
+
+    function Plot() {
+      Transform(chartData, opts, 0);
+      BuildPie(runningData, opts, 0);
+    }
+
+    function BuildPie(finaldata, options, level) {
+
+      // dimensions for the chart
+      var width = 600,
+        height = 400,
+        radius = Math.min(400, height) / 2,
+        xVarName,
+
+        legendoffset = 0;
+      // (level == 0) ? 0 : -40;
+
+      if (level == 1) {
+        xVarName = opts.ap;
+      } else {
+        xVarName = opts.rm;
+      }
+
+      var color = d3.scaleOrdinal().range(runningColors);
+
+      var svg = d3.select('#chart')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .append('g') // we center the g element in the containing svg element.
+        .attr('transform', 'translate(' + (400 / 2) + ',' + (height / 2) + ')')
+
+      // constructs a new arc generator
+      var arc = d3.arc()
+        .innerRadius(0)
+        .outerRadius(radius - 50);
+
+      var labelArc = d3.arc()
+        .innerRadius(70)
+        .outerRadius(radius - 50)
+
+      // computes angles in order to represent data as a pie shape
+      var pie = d3.pie()
+        .value(function(d) {
+          return d.energy;
+        })
+        .sort(null);
+
+      if (level == 0) {
+        var g = svg.selectAll("arc")
+          .data(pie(runningData))
+          .enter().append("g")
+          .attr("class", "arc");
+
+        // draw section of the pie graph
+        var path = g.append("path")
+          .attr("d", arc)
+          .attr('fill', function(d, i) {
+            return color(d.data[xVarName])
+          })
+          // use opacity to differentiate items within a category
+          .style("opacity", function(d) {
+            return d.data["op"];
+          })
+          .style("position", "relative")
+          .style("z-index", 0);
+
+        // animate
+        path.transition()
+          .ease(d3.easeLinear)
+          .duration(1000)
+          .attrTween("d", pieTween);
+
+      } else {
+        var g = svg.selectAll("arc")
+          .data(pie(runningData))
+          .enter().append("g")
+          .attr("class", "arc");
+
+        var path = g.append("path")
+          .attr("d", arc)
+          .attr('fill', function(d, i) {
+            return color(d.data[xVarName])
+          })
+          .style("opacity", function(d) {
+            return d.data["op"];
+          });
+
+        path.transition()
+          .ease(d3.easeLinear)
+          .duration(1000)
+          .attrTween("d", pieTween);
+      }
+
+      /** Tween for animating the unfolding the pie graph **/
+      function pieTween(b) {
+        b.innerRadius = 0;
+        var i = d3.interpolate({
+          startAngle: 0,
+          endAngle: 0
+        }, b);
+        return function(t) {
+          return arc(i(t));
+        };
+      }
+
+      // creating the legend
+      var count = 0;
+      var legend = svg.selectAll(".legend")
+        .data(pie(runningData)).enter()
+        .append("g")
+        .attr("class", "legend")
+        .attr("legend-id", function(d) {
+          return count++;
+        })
+        .attr("transform", function(d, i) {
+          return "translate(60," + (parseInt("-" + (runningData.length * 10)) + i * 28 + legendoffset) + ")";
+        })
+
+      var leg = legend.append("rect");
+
+      leg.attr("x", width / 3)
+        .attr("width", 18)
+        .attr("height", 18)
+        .attr("fill", function(d, i) {
+          return color(d.data[xVarName]);
+        })
+        .style("opacity", function(d) {
+          return d.data["op"];
+        });
+
+      legend.append("text").attr("x", (width / 2) - 115)
+        .attr("y", 9).attr("dy", ".35em")
+        .style("text-anchor", "end").text(function(d) {
+          return d.data.label;
+        });
+
+      // Tooltips
+      path
+        .on("mouseover", function(d) {
+          d3.select("#tooltip")
+            .style("left", "370px")
+            .style("top", "10px")
+            .style("opacity", 1)
+            .select("#section")
+            .text(d.data.label);
+          d3.select("#tooltip")
+            .select("#value")
+            .text(d.data.energy);
+        })
+
+        .on("mouseout", function() {
+          // Hide the tooltip
+          d3.select("#tooltip")
+            .style("opacity", 0);;
+        });
+
+      path.on("click", function(d) {
+        d3.selectAll("#chart svg").remove();
+
+        if (level == 0) {
+          // sorts energy values from highest to lowest
+          var orderedChartData = chartData.sort(function(a, b) { // sorting the chart data based on the 'total' property value, from greatest to smallest
+            return parseFloat(b[opts.num]) - parseFloat(a[opts.num]);
+          });
+          // pass 1 for level to specify we will drill down
+          Transform(orderedChartData, opts, 1, d.data.room);
+          BuildPie(runningData, opts, 1);
+        } else {
+          Transform(chartData, opts, 0);
+          BuildPie(runningData, opts, 0);
+        }
+      })
+
+    };
+
+
+    /**
+     * transforms data based on whether drilling down or not
+     * so you can make pie chart for each level
+     **/
+    function Transform(chartdata, options, level, filter) {
+      var result = [];
+      var resultColors = [];
+      var opcounter = 0;
+      var counter = 0;
+
+      if (level == 0) {
+        for (var i in chartdata) {
+          hasMatch = false;
+          for (var index = 0; index < result.length; ++index) {
+            var data = result[index];
+
+            if (data[opts.rm] == chartData[i][opts.rm]) {
+              result[index][opts.num] = result[index][opts.num] + chartData[i][opts.num];
+              hasMatch = true;
+              break;
+            }
+          }
+
+          if (hasMatch == false) {
+            ditem = {};
+            ditem[opts.rm] = chartData[i][opts.rm];
+            ditem[opts.num] = chartData[i][opts.num];
+            ditem["label"] = chartData[i][opts.rm];
+            ditem["op"] = 1;
+            result.push(ditem);
+
+            resultColors[counter] = opts.color != undefined ? opts.color[chartData[i][opts.rm]] : "";
+
+            counter += 1;
+          }
+
+        }
+
+      } else { // creating data for drill down
+        for (var i in chartdata) {
+          if (chartdata[i].room == filter) {
+            var newobj = {};
+            newobj.appliance = chartdata[i].appliance;
+            newobj.energy = chartdata[i].energy;
+            newobj["label"] = chartdata[i][opts.ap];
+            newobj["op"] = 1.0 - parseFloat("0." + opcounter);
+            result.push(newobj);
+
+            resultColors[counter] = opts.color[chartData[i][opts.rm]];
+            opcounter += 2;
+          }
+
+
+        }
+      }
+
+      runningColors = resultColors;
+      runningData = result;
+      return;
+
+    }
+
+    opts = {
+      "captions": {
+        "Living": "Living",
+        "Bedroom": "Bedroom",
+        "Bathroom": "Bathroom",
+        "Kitchen": "Kitchen"
+      },
+      "color": {
+        "Living": "#660033",
+        "Bedroom": "#0066ff",
+        "Bathroom": "#ffaa00",
+        "Kitchen": "#009933"
+      },
+      "rm": "room",
+      "ap": "appliance",
+      "num": "energy"
+    }
+
+    var chartData = [{
+        "room": "Living",
+        "appliance": "Lighting",
+        "energy": 300
+      },
+      {
+        "room": "Living",
+        "appliance": "TV",
+        "energy": 100
+      },
+      {
+        "room": "Living",
+        "appliance": "Heating",
+        "energy": 400
+      },
+      {
+        "room": "Bedroom",
+        "appliance": "Lighting1",
+        "energy": 190
+      },
+      {
+        "room": "Bedroom",
+        "appliance": "Lighting2",
+        "energy": 55
+      },
+      {
+        "room": "Bedroom",
+        "appliance": "Heating",
+        "energy": 240
+      },
+      {
+        "room": "Bathroom",
+        "appliance": "Lighting",
+        "energy": 80
+      },
+      {
+        "room": "Bathroom",
+        "appliance": "Hot Water",
+        "energy": 390
+      },
+      {
+        "room": "Bathroom",
+        "appliance": "Fan",
+        "energy": 50
+      },
+      {
+        "room": "Kitchen",
+        "appliance": "Dishwasher",
+        "energy": 120
+      },
+      {
+        "room": "Kitchen",
+        "appliance": "Stove",
+        "energy": 350
+      },
+      {
+        "room": "Kitchen",
+        "appliance": "Fridge",
+        "energy": 110
+      },
+      {
+        "room": "Kitchen",
+        "appliance": "Lighting",
+        "energy": 100
+      }
+    ]
+  </script>
+  <script src="https://code.jquery.com/jquery-3.1.1.slim.min.js" integrity="sha384-A7FZj7v+d/sdmMqp/nOQwliLvUsJfDHW+k9Omg/a/EheAdgtzNs3hpfag6Ed950n" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tether/1.4.0/js/tether.min.js" integrity="sha384-DztdAPBWPRXSA/3eYEEUWrWCy7G5KFbe8fFjk5JAIxUYHKkDx6Qin1DkWx51bBrb" crossorigin="anonymous"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
+</body>
+
+</html>
