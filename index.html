@@ -175,7 +175,7 @@
         .on("mouseover", function(d) {
           d3.select("#tooltip")
             .style("left", "370px")
-            .style("top", "10px")
+            .style("top", "20px")
             .style("opacity", 1)
             .select("#section")
             .text(d.data.label);
@@ -187,7 +187,7 @@
         .on("mouseout", function() {
           // Hide the tooltip
           d3.select("#tooltip")
-            .style("opacity", 0);;
+          .style("opacity", 0);;
         });
 
       path.on("click", function(d) {
